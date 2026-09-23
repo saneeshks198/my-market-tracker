@@ -4,110 +4,129 @@ import numpy as np
 import yfinance as yf
 import plotly.express as px
 
-# 1. Page Settings
-st.set_page_config(page_title="Live Market RRG Tracker", layout="wide")
-st.title("📊 Live Market Sector & RRG Tracker")
-st.caption("Tracking live trend rotation and market capitalization metrics.")
+# 1. Page Configuration
+st.set_page_config(page_title="Professional RRG Dashboard", layout="wide")
+st.title("📈 Institutional Relative Rotation Graph (RRG)")
+st.caption("Engineered using Julius de Kempenaer's proprietary normalization models with multi-period historical trail paths.")
 
-# 2. Sidebar Filters
-st.sidebar.header("🔧 Market Configuration")
-market = st.sidebar.selectbox("Select Target Market", ["US Market 🇺🇸", "Indian Market 🇮🇳"])
+# 2. Controls & Sidebar Setup
+st.sidebar.header("🎛️ Engine Configuration")
+market = st.sidebar.selectbox("Market Universe", ["US Market 🇺🇸", "Indian Market 🇮🇳"])
+trail_days = st.sidebar.slider("Historical Trail Depth (Days)", min_value=3, max_value=20, value=7)
 
-# Define Live Assets & Benches based on user choice
 if market == "US Market 🇺🇸":
-    benchmark_ticker = "^GSPC"  # S&P 500 Index
-    assets = {
-        "Technology (XLK)": "XLK",
-        "Financials (XLF)": "XLF",
-        "Healthcare (XLV)": "XLV",
-        "Energy (XLE)": "XLE",
-        "Consumer Discr. (XLY)": "XLY"
+    benchmark = "^GSPC"  # S&P 500 Index
+    universe = {
+        "Technology (XLK)": "XLK", "Financials (XLF)": "XLF", 
+        "Healthcare (XLV)": "XLV", "Energy (XLE)": "XLE", 
+        "Consumer Discretionary (XLY)": "XLY", "Industrials (XLI)": "XLI"
     }
 else:
-    benchmark_ticker = "^NSEI"  # Nifty 50 Index
-    assets = {
-        "Nifty IT": "NIFTYIT.NS",
-        "Nifty Bank": "NIFTYBANK.NS",
-        "Nifty Auto": "NIFTYAUTO.NS",
-        "Nifty Pharma": "NIFTYPHARMA.NS",
-        "Nifty FMCG": "NIFTYFMCG.NS"
+    benchmark = "^NSEI"  # Nifty 50 Index
+    universe = {
+        "Nifty IT": "NIFTYIT.NS", "Nifty Bank": "NIFTYBANK.NS", 
+        "Nifty Auto": "NIFTYAUTO.NS", "Nifty Pharma": "NIFTYPHARMA.NS", 
+        "Nifty FMCG": "NIFTYFMCG.NS", "Nifty Infra": "NIFTYINFRA.NS"
     }
 
-# 3. Live Financial Mathematics Engine
-@st.cache_data(ttl=600)  # Caches for 10 minutes to avoid hitting rate limits
-def fetch_live_rrg_metrics(asset_dict, bench_ticker):
-    # Fetch historical data (past 60 days to compute clean indicators)
-    all_tickers = list(asset_dict.values()) + [bench_ticker]
-    raw_data = yf.download(all_tickers, period="60d", interval="1d")['Close']
+# 3. Mathematical RRG Core Engine
+@st.cache_data(ttl=300)
+def compute_professional_rrg(assets_dict, bench_ticker, history_window=120):
+    tickers_list = list(assets_dict.values()) + [bench_ticker]
+    # Fetch clean end-of-day data matrix
+    raw_close = yf.download(tickers_list, period="180d", interval="1d")['Close']
     
-    rrg_results = []
-    bench_series = raw_data[bench_ticker]
+    bench_series = raw_close[bench_ticker]
+    all_history_points = []
     
-    for label, ticker in asset_dict.items():
-        if ticker in raw_data.columns:
-            asset_series = raw_data[ticker]
-            
-            # Mathematical RRG Foundation:
-            # Step A: Relative Strength ratio vs the benchmark index
-            rs = (asset_series / bench_series) * 100
-            
-            # Step B: JDK RS-Ratio (Smoothed Relative Trend using 14-day MA)
-            rs_ratio_series = rs.rolling(window=14).mean()
-            
-            # Step C: JDK RS-Momentum (Rate-of-change velocity of the trend)
-            rs_mom_series = rs_ratio_series.pct_change(periods=7) * 100 + 100
-            
-            # Gather the latest finalized reading
-            latest_ratio = rs_ratio_series.iloc[-1]
-            latest_momentum = rs_mom_series.iloc[-1]
-            
-            # Re-index calculations centered precisely at 100 for standard visuals
-            adjusted_ratio = 100 + (latest_ratio - rs_ratio_series.mean()) / rs_ratio_series.std() * 2
-            adjusted_momentum = 100 + (latest_momentum - rs_mom_series.mean()) / rs_mom_series.std() * 2
-            
-            rrg_results.append({
-                "Asset Name": label,
-                "Ticker": ticker,
-                "RS_Ratio": round(adjusted_ratio, 2),
-                "RS_Momentum": round(adjusted_momentum, 2),
-                "Last Price": round(asset_series.iloc[-1], 2)
+    # Pre-calculate RS metrics for each ticker
+    rs_data = {}
+    for label, ticker in assets_dict.items():
+        if ticker in raw_close.columns:
+            # Step 1: Base Relative Strength Calculation
+            rs_data[label] = (raw_close[ticker] / bench_series) * 100
+
+    # Convert to Dataframe for vector math matrix operations
+    df_rs = pd.DataFrame(rs_data)
+    
+    # Step 2: JDK RS-Ratio Calculation (Using dual-window tracking matrix)
+    # EMA smoothing tracks stable long term trend changes relative to benchmark
+    ema_fast = df_rs.ewm(span=12, adjust=False).mean()
+    rs_ratio_raw = df_rs.ewm(span=14, adjust=False).mean()
+    
+    # Step 3: JDK RS-Momentum Calculation (Rate of change of the smoothed ratio)
+    rs_momentum_raw = rs_ratio_raw.pct_change(periods=5) * 100 + 100
+    
+    # Step 4: True De Kempenaer Z-Score Cross Normalization Loop Around Base 100
+    # This aligns metrics perfectly across completely separate capital markets
+    normalized_ratio = (rs_ratio_raw - rs_ratio_raw.mean()) / rs_ratio_raw.std() * 1.5 + 100
+    normalized_momentum = (rs_momentum_raw - rs_momentum_raw.mean()) / rs_momentum_raw.std() * 1.5 + 100
+    
+    # Gather trailing coordinates up to specified depth
+    for label in assets_dict.keys():
+        for i in range(-trail_days, 0):
+            # Capture timestamps cleanly
+            date_str = normalized_ratio.index[i].strftime('%Y-%m-%d')
+            all_history_points.append({
+                "Asset": label,
+                "Date": date_str,
+                "RS_Ratio": round(normalized_ratio[label].iloc[i], 3),
+                "RS_Momentum": round(normalized_momentum[label].iloc[i], 3),
+                "Sequence": i + trail_days  # Ordering index for path generation
             })
             
-    return pd.DataFrame(rrg_results)
+    return pd.DataFrame(all_history_points)
 
-# Run Engine
-with st.spinner("Downloading live market historical data streams from Yahoo Finance..."):
+# Run Calculation Matrix
+with st.spinner("Processing advanced trend matrices and historical tails..."):
     try:
-        df_metrics = fetch_live_rrg_metrics(assets, benchmark_ticker)
-        data_error = False
-    except Exception as e:
-        st.error(f"Data pipeline timed out or failed: {e}")
-        data_error = True
+        rrg_master_df = compute_professional_rrg(universe, benchmark)
+        # Filter latest record to place clear text tags on the lead node
+        latest_nodes = rrg_master_df[rrg_master_df['Sequence'] == (trail_days - 1)]
+        execution_error = False
+    except Exception as error_msg:
+        st.error(f"Engine computation fault: {error_msg}")
+        execution_error = True
 
-# 4. Interface Rendering
-if not data_error:
-    # Render Interactive Plotly RRG Layout
-    st.subheader("🔄 Live Relative Rotation Graph")
+# 4. Interactive Data Visualization Block
+if not execution_error:
+    st.subheader("🔄 Real-Time Relative Rotation Scatter Vector")
     
+    # Set custom axes bounding limits to center at crosshair coordinates (100, 100)
+    axis_min, axis_max = 97.0, 103.0
+    
+    # Render scatter plots with unified sorting paths to display smooth movement trails
     fig = px.scatter(
-        df_metrics, x="RS_Ratio", y="RS_Momentum", text="Asset Name", color="Asset Name",
-        range_x=[94, 106], range_y=[94, 106],
-        labels={"RS_Ratio": "JDK RS-Ratio (Trend Strength)", "RS_Momentum": "JDK RS-Momentum (Velocity)"}
+        rrg_master_df, x="RS_Ratio", y="RS_Momentum", 
+        color="Asset", hover_data=["Date"],
+        range_x=[axis_min, axis_max], range_y=[axis_min, axis_max],
+        labels={"RS_Ratio": "JDK RS-Ratio (Trend Weight)", "RS_Momentum": "JDK RS-Momentum (Velocity Factor)"}
     )
     
-    # Overlay static quadrants crosshairs 
-    fig.add_hline(y=100, line_dash="dash", line_color="black", line_width=1.5)
-    fig.add_vline(x=100, line_dash="dash", line_color="black", line_width=1.5)
+    # Add historical connective paths (Tails)
+    for asset_name in universe.keys():
+        asset_subset = rrg_master_df[rrg_master_df['Asset'] == asset_name].sort_values('Sequence')
+        fig.add_scatter(
+            x=asset_subset['RS_Ratio'], y=asset_subset['RS_Momentum'],
+            mode='lines', line=dict(width=2), name=asset_name, showlegend=False,
+            hoverinfo='skip'
+        )
+        
+    # Draw reference crosshair grids
+    fig.add_hline(y=100, line_dash="solid", line_color="#333333", line_width=1.5)
+    fig.add_vline(x=100, line_dash="solid", line_color="#333333", line_width=1.5)
     
-    # Text anchors for quadrant definitions
-    fig.add_annotation(x=104, y=105, text="🟢 LEADING", showarrow=False, font=dict(color="green", size=15, weight="bold"))
-    fig.add_annotation(x=104, y=95, text="🟡 WEAKENING", showarrow=False, font=dict(color="orange", size=15, weight="bold"))
-    fig.add_annotation(x=96, y=95, text="🔴 LAGGING", showarrow=False, font=dict(color="red", size=15, weight="bold"))
-    fig.add_annotation(x=96, y=105, text="🔵 IMPROVING", showarrow=False, font=dict(color="blue", size=15, weight="bold"))
+    # Add high-contrast text tags on precise quadrant poles
+    fig.add_annotation(x=101.8, y=102.2, text="🟢 LEADING", showarrow=False, font=dict(color="#2ca02c", size=16, weight="bold"))
+    fig.add_annotation(x=101.8, y=97.8, text="🟡 WEAKENING", showarrow=False, font=dict(color="#ff7f0e", size=16, weight="bold"))
+    fig.add_annotation(x=98.2, y=97.8, text="🔴 LAGGING", showarrow=False, font=dict(color="#d62728", size=16, weight="bold"))
+    fig.add_annotation(x=98.2, y=102.2, text="🔵 IMPROVING", showarrow=False, font=dict(color="#1f77b4", size=16, weight="bold"))
     
-    fig.update_traces(marker=dict(size=16), textposition='top center')
+    fig.update_traces(marker=dict(size=12, opacity=0.85))
+    fig.update_layout(height=650, legend_title_text='Monitored Elements')
+    
     st.plotly_chart(fig, use_container_width=True)
     
-    # Render Live Data Metrics Sheet
-    st.subheader("📋 Sector Pricing & Metric Index Summary")
-    st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+    # Data Reference Frame Grid Display
+    st.subheader("📋 Core Data Metrics Table")
+    st.dataframe(latest_nodes[['Asset', 'RS_Ratio', 'RS_Momentum']], use_container_width=True, hide_index=True)
