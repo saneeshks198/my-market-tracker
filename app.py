@@ -51,13 +51,11 @@ selected_caps = st.sidebar.multiselect("Filter Market Cap Tier", ["Mega Cap", "L
 trail_periods = st.sidebar.slider("Historical Trail Length (Bars)", min_value=4, max_value=24, value=8)
 
 # 3. Dynamic Stock Engine
-# Binds selected classifications to valid tradeable assets automatically
 active_tickers = {}
 for sec in selected_sectors:
     if sec in ticker_map:
         active_tickers[sec] = ticker_map[sec]
     else:
-        # Fallback allocation to ensure custom selection profiles do not crash the engine canvas
         active_tickers[sec] = "RELIANCE.NS"
 
 # 4. Mathematical RRG Processing Loop
@@ -68,7 +66,9 @@ def run_rrg_calculation(assets, bench_ticker="^NSEI", lookback=8):
     tickers = list(assets.values()) + [bench_ticker]
     raw_data = yf.download(tickers, period="1y", interval="1d")['Close']
     
-    if bench_ticker not in raw_close_cols := raw_data.columns:
+    # FIX: Separated the walrus operator assignment to clear the syntax error cleanly
+    raw_close_cols = raw_data.columns
+    if bench_ticker not in raw_close_cols:
         return pd.DataFrame()
         
     bench = raw_data[bench_ticker]
@@ -97,7 +97,10 @@ def run_rrg_calculation(assets, bench_ticker="^NSEI", lookback=8):
 if active_tickers:
     with st.spinner("Compiling structural asset matrices..."):
         df = run_rrg_calculation(active_tickers, "^NSEI", trail_periods)
-    execution_error = df.empty
+    if df is not None and not df.empty:
+        execution_error = False
+    else:
+        execution_error = True
 else:
     st.warning("Please select configurations in the sidebar menu.")
     execution_error = True
@@ -109,7 +112,6 @@ if not execution_error:
     
     fig = go.Figure()
     
-    # Render Translucent Colored Background Rectangles to define true Quadrants
     fig.add_shape(type="rect", x0=100, y0=100, x1=max_x, y1=max_y, fillcolor="rgba(46, 204, 113, 0.06)", line_width=0)
     fig.add_shape(type="rect", x0=100, y0=min_y, x1=max_x, y1=100, fillcolor="rgba(241, 196, 15, 0.06)", line_width=0)
     fig.add_shape(type="rect", x0=min_x, y0=min_y, x1=100, y1=100, fillcolor="rgba(231, 76, 60, 0.06)", line_width=0)
